@@ -1,0 +1,152 @@
+From 5d3f3ca68cb9534098eb8ac83d2a193c57a375cd Mon Sep 17 00:00:00 2001
+From: Connor McAdams <conmanx360@gmail.com>
+Date: Sun, 6 Mar 2022 13:30:10 -0500
+Subject: [PATCH 05/10] ALSA: hda/ca0132 - Add pre-init function for
+ SoundBlaster AE-9.
+
+Add pre DSP initialization function for the AE-9.
+
+Signed-off-by: Connor McAdams <conmanx360@gmail.com>
+---
+ sound/pci/hda/patch_ca0132.c | 89 ++++++++++++++++++++++++++++++------
+ 1 file changed, 76 insertions(+), 13 deletions(-)
+
+diff --git a/sound/pci/hda/patch_ca0132.c b/sound/pci/hda/patch_ca0132.c
+index 2fd256bb0682..b7e94de5a401 100644
+--- a/sound/pci/hda/patch_ca0132.c
++++ b/sound/pci/hda/patch_ca0132.c
+@@ -1522,6 +1522,25 @@ static const struct ca0132_alt_out_set_quirk_data quirk_out_set_data[] = {
+ 	}
+ };
+ 
++static bool ca0132_is_ae_card(struct hda_codec *codec)
++{
++	struct ca0132_spec *spec = codec->spec;
++	bool ret;
++
++	switch (ca0132_quirk(spec)) {
++	case QUIRK_AE5:
++	case QUIRK_AE7:
++	case QUIRK_AE9:
++		ret = true;
++		break;
++	default:
++		ret = false;
++		break;
++	}
++
++	return ret;
++}
++
+ /*
+  * CA0132 codec access
+  */
+@@ -9408,6 +9427,11 @@ static const unsigned char ca0132_ae5_register_set_data[] = {
+ 	0x01, 0x6b, 0x57
+ };
+ 
++static const unsigned char ca0132_ae9_register_set_data[] = {
++	0x3f, 0x0e, 0x3f, 0x0c, 0x3f, 0x08, 0x7f, 0x00, 0xff, 0x00, 0x6b,
++	0x01, 0x6b, 0x57,
++};
++
+ /*
+  * This function writes to some SFR's, does some region2 writes, and then
+  * eventually resets the codec with the 0x7ff verb. Not quite sure why it does
+@@ -9425,17 +9449,32 @@ static void ae5_register_set(struct hda_codec *codec)
+ 	if (ca0132_quirk(spec) == QUIRK_AE7)
+ 		chipio_8051_write_pll_pmu(codec, 0x41, 0xc8);
+ 
+-	chipio_8051_write_direct(codec, 0x93, 0x10);
+-	chipio_8051_write_pll_pmu(codec, 0x44, 0xc2);
+-
+-	if (ca0132_quirk(spec) == QUIRK_AE7) {
+-		tmp[0] = 0x03;
+-		tmp[1] = 0x03;
+-		tmp[2] = 0x07;
++	if (ca0132_quirk(spec) == QUIRK_AE9) {
++		chipio_8051_write_pll_pmu(codec, 0x44, 0xc8);
+ 	} else {
++		chipio_8051_write_direct(codec, 0x93, 0x10);
++		chipio_8051_write_pll_pmu(codec, 0x44, 0xc2);
++	}
++
++	switch (ca0132_quirk(spec)) {
++	case QUIRK_AE5:
+ 		tmp[0] = 0x0f;
+ 		tmp[1] = 0x0f;
+ 		tmp[2] = 0x0f;
++		break;
++	case QUIRK_AE7:
++		tmp[0] = 0x03;
++		tmp[1] = 0x03;
++		tmp[2] = 0x07;
++		break;
++	case QUIRK_AE9:
++		data = ca0132_ae9_register_set_data;
++		tmp[0] = 0x3f;
++		tmp[1] = 0x3f;
++		tmp[2] = 0x3f;
++		break;
++	default:
++		break;
+ 	}
+ 
+ 	for (i = cur_addr = 0; i < 3; i++, cur_addr++)
+@@ -9453,15 +9492,39 @@ static void ae5_register_set(struct hda_codec *codec)
+ 
+ 	writel(0x00800001, spec->mem_base + 0x20c);
+ 
+-	if (ca0132_quirk(spec) == QUIRK_AE7) {
++	switch (ca0132_quirk(spec)) {
++	case QUIRK_AE5:
++		ca0113_mmio_command_set(codec, 0x30, 0x2d, 0x3f);
++		break;
++	case QUIRK_AE7:
+ 		ca0113_mmio_command_set_type2(codec, 0x48, 0x07, 0x83);
+ 		ca0113_mmio_command_set(codec, 0x30, 0x2e, 0x3f);
+-	} else {
+-		ca0113_mmio_command_set(codec, 0x30, 0x2d, 0x3f);
++		break;
++	case QUIRK_AE9:
++		ca0113_mmio_gpio_set(codec, 5, true);
++		ca0113_mmio_gpio_set(codec, 0, false);
++		chipio_set_control_param(codec, CONTROL_PARAM_VIP_SOURCE, 0);
++		chipio_set_control_param(codec, CONTROL_PARAM_PORTA_160OHM_GAIN, 6);
++		ca0113_mmio_gpio_set(codec, 0, true);
++		ca0113_mmio_command_set_type2(codec, 0x48, 0x07, 0x81);
++		ca0113_mmio_command_set(codec, 0x49, 0x0a, 0x07);
++		ca0113_mmio_gpio_set(codec, 2, false);
++		ca0113_mmio_command_set(codec, 0x48, 0x1d, 0x40);
++		ca0113_mmio_gpio_set(codec, 3, true);
++		writel(0x00880480, spec->mem_base + 0x01c);
++		chipio_write(codec, 0x18b0a4, 0x000000c2);
++		chipio_set_control_flag(codec, CONTROL_FLAG_IDLE_ENABLE, 0);
++		snd_hda_codec_write(codec, codec->core.afg, 0, AC_VERB_SET_CODEC_RESET, 0);
++		snd_hda_codec_write(codec, codec->core.afg, 0, AC_VERB_SET_CODEC_RESET, 0);
++		break;
++	default:
++		break;
+ 	}
+ 
+-	chipio_8051_write_direct(codec, 0x90, 0x00);
+-	chipio_8051_write_direct(codec, 0x90, 0x10);
++	if (ca0132_quirk(spec) != QUIRK_AE9) {
++		chipio_8051_write_direct(codec, 0x90, 0x00);
++		chipio_8051_write_direct(codec, 0x90, 0x10);
++	}
+ 
+ 	if (ca0132_quirk(spec) == QUIRK_AE5)
+ 		ca0113_mmio_command_set(codec, 0x48, 0x07, 0x83);
+@@ -9567,7 +9630,7 @@ static int ca0132_init(struct hda_codec *codec)
+ 
+ 	snd_hda_power_up_pm(codec);
+ 
+-	if (ca0132_quirk(spec) == QUIRK_AE5 || ca0132_quirk(spec) == QUIRK_AE7)
++	if (ca0132_is_ae_card(codec))
+ 		ae5_register_set(codec);
+ 
+ 	ca0132_init_params(codec);
+-- 
+2.43.0
+

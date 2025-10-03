@@ -1,0 +1,44 @@
+From 5b3aeb9f259410394e49d01179becbad15cf2dd4 Mon Sep 17 00:00:00 2001
+From: Connor McAdams <conmanx360@gmail.com>
+Date: Sun, 6 Mar 2022 13:53:59 -0500
+Subject: [PATCH 06/10] ALSA: hda/ca0132 - Add init data for SoundBlaster AE-9.
+
+Add initialization data for the SoundBlaster AE-9 card.
+
+Signed-off-by: Connor McAdams <conmanx360@gmail.com>
+---
+ sound/pci/hda/patch_ca0132.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/sound/pci/hda/patch_ca0132.c b/sound/pci/hda/patch_ca0132.c
+index b7e94de5a401..104b6ae691f1 100644
+--- a/sound/pci/hda/patch_ca0132.c
++++ b/sound/pci/hda/patch_ca0132.c
+@@ -3783,6 +3783,7 @@ static void ca0132_gpio_init(struct hda_codec *codec)
+ 	case QUIRK_SBZ:
+ 	case QUIRK_AE5:
+ 	case QUIRK_AE7:
++	case QUIRK_AE9:
+ 		snd_hda_codec_write(codec, 0x01, 0, 0x793, 0x00);
+ 		snd_hda_codec_write(codec, 0x01, 0, 0x794, 0x53);
+ 		snd_hda_codec_write(codec, 0x01, 0, 0x790, 0x23);
+@@ -9581,6 +9582,16 @@ static void ca0132_alt_init(struct hda_codec *codec)
+ 		chipio_write(codec, 0x18b030, 0x00000020);
+ 		ca0113_mmio_command_set(codec, 0x30, 0x32, 0x3f);
+ 		break;
++	case QUIRK_AE9:
++		ca0132_gpio_init(codec);
++		chipio_8051_write_pll_pmu(codec, 0x49, 0x88);
++		snd_hda_sequence_write(codec, spec->chip_init_verbs);
++		snd_hda_sequence_write(codec, spec->desktop_init_verbs);
++		chipio_write(codec, 0x18b008, 0x000000f8);
++		chipio_write(codec, 0x18b008, 0x000000f0);
++		chipio_write(codec, 0x18b030, 0x00000027);
++		ca0113_mmio_gpio_set(codec, 3, false);
++		break;
+ 	case QUIRK_ZXR:
+ 		chipio_8051_write_pll_pmu(codec, 0x49, 0x88);
+ 		snd_hda_sequence_write(codec, spec->chip_init_verbs);
+-- 
+2.43.0
+

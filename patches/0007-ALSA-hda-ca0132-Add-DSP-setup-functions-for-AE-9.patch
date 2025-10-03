@@ -1,0 +1,237 @@
+From dc417a8dab42573fe8a9d6df18848e06a478c471 Mon Sep 17 00:00:00 2001
+From: Connor McAdams <conmanx360@gmail.com>
+Date: Sun, 13 Mar 2022 15:15:53 -0400
+Subject: [PATCH 07/10] ALSA: hda/ca0132 - Add DSP setup functions for AE-9.
+
+Add DSP setup functions for the Sound Blaster AE-9 post DSP download.
+
+Signed-off-by: Connor McAdams <conmanx360@gmail.com>
+---
+ sound/pci/hda/patch_ca0132.c | 197 +++++++++++++++++++++++++++++++++++
+ 1 file changed, 197 insertions(+)
+
+diff --git a/sound/pci/hda/patch_ca0132.c b/sound/pci/hda/patch_ca0132.c
+index 104b6ae691f1..454327df81ac 100644
+--- a/sound/pci/hda/patch_ca0132.c
++++ b/sound/pci/hda/patch_ca0132.c
+@@ -8233,6 +8233,131 @@ static void ae7_post_dsp_asi_setup(struct hda_codec *codec)
+ 	ae7_post_dsp_asi_setup_ports(codec);
+ }
+ 
++static void ae9_post_dsp_pll_setup(struct hda_codec *codec)
++{
++	static const unsigned int addr[] = {
++		0x44, 0x43, 0x45, 0x40, 0x42, 0x41, 0x51
++	};
++	static const unsigned int data[] = {
++		0xc8, 0xcc, 0xcb, 0xc7, 0xcd, 0xce, 0xdb
++	};
++	unsigned int i;
++
++	for (i = 0; i < ARRAY_SIZE(addr); i++)
++		chipio_8051_write_pll_pmu_no_mutex(codec, addr[i], data[i]);
++}
++
++static void ae9_post_dsp_mmio_commands(struct hda_codec *codec)
++{
++	ca0113_mmio_command_set(codec, 0x48, 0x0d, 0x00);
++	ca0113_mmio_command_set(codec, 0x48, 0x17, 0x00);
++	ca0113_mmio_command_set(codec, 0x48, 0x19, 0x00);
++	ca0113_mmio_command_set(codec, 0x48, 0x11, 0xff);
++	ca0113_mmio_command_set(codec, 0x48, 0x12, 0xff);
++	ca0113_mmio_command_set(codec, 0x48, 0x13, 0xff);
++	ca0113_mmio_command_set(codec, 0x48, 0x14, 0x7f);
++	ca0113_mmio_command_set(codec, 0x48, 0x1d, 0x80);
++}
++
++static void ae9_post_dsp_stream_setup(struct hda_codec *codec, bool start_stream)
++{
++	chipio_set_stream_source_dest(codec, 0x05, 0x43, 0x00);
++	if (!start_stream)
++		ca0113_mmio_command_set(codec, 0x48, 0x0f, 0x37);
++
++	chipio_set_stream_source_dest(codec, 0x18, 0x09, 0xd0);
++	if (!start_stream)
++		ca0113_mmio_command_set(codec, 0x48, 0x10, 0x37);
++
++	chipio_set_conn_rate_no_mutex(codec, 0xd0, SR_96_000);
++	chipio_set_stream_channels(codec, 0x18, 6);
++
++	if (start_stream) {
++		ca0113_mmio_command_set(codec, 0x48, 0x01, 0xc0);
++		ca0113_mmio_command_set(codec, 0x48, 0x0a, 0x02);
++		chipio_set_stream_control(codec, 0x18, 1);
++		chipio_set_control_param_no_mutex(codec, CONTROL_PARAM_ASI, 8);
++		chipio_8051_write_pll_pmu_no_mutex(codec, 0x40, 0xc7);
++		chipio_8051_write_pll_pmu_no_mutex(codec, 0x42, 0xcd);
++		chipio_8051_write_pll_pmu_no_mutex(codec, 0x41, 0xce);
++		ca0113_mmio_command_set(codec, 0x48, 0x0b, 0x20);
++		ca0113_mmio_command_set(codec, 0x48, 0x04, 0x00);
++		ca0113_mmio_command_set(codec, 0x48, 0x04, 0x00);
++		ca0113_mmio_command_set(codec, 0x48, 0x08, 0xff);
++		ca0113_mmio_command_set(codec, 0x48, 0x1d, 0x40);
++		ca0113_mmio_command_set(codec, 0x48, 0x0a, 0x06);
++		ca0113_mmio_command_set(codec, 0x48, 0x0c, 0x5f);
++		ca0113_mmio_command_set_type2(codec, 0x48, 0x0f, 0x37);
++		ca0113_mmio_command_set(codec, 0x48, 0x0e, 0x8a);
++		chipio_write_no_mutex(codec, 0x189000, 0x0001f101);
++		chipio_write_no_mutex(codec, 0x189004, 0x0001f101);
++		chipio_write_no_mutex(codec, 0x189008, 0x0001f101);
++		chipio_write_no_mutex(codec, 0x189024, 0x00014004);
++		chipio_write_no_mutex(codec, 0x189028, 0x0002000f);
++		ca0113_mmio_command_set_type2(codec, 0x48, 0x10, 0x37);
++		ca0113_mmio_command_set(codec, 0x48, 0x07, 0x81);
++	}
++
++	ae9_post_dsp_pll_setup(codec);
++	chipio_set_control_param_no_mutex(codec, CONTROL_PARAM_ASI, 0x0f);
++}
++
++static void ae9_post_dsp_asi_setup(struct hda_codec *codec)
++{
++	struct ca0132_spec *spec = codec->spec;
++
++	ca0113_mmio_gpio_set(codec, 3, true);
++	ca0113_mmio_gpio_set(codec, 3, false);
++	ca0113_mmio_command_set_type2(codec, 0x48, 0x07, 0x81);
++	ca0113_mmio_command_set(codec, 0x49, 0x0a, 0x07);
++	ca0113_mmio_gpio_set(codec, 2, false);
++	ca0113_mmio_command_set(codec, 0x48, 0x1d, 0x40);
++	ca0113_mmio_gpio_set(codec, 3, true);
++	ca0113_mmio_gpio_set(codec, 1, false);
++	ae5_post_dsp_param_setup(codec);
++
++	mutex_lock(&spec->chipio_mutex);
++
++	ae9_post_dsp_pll_setup(codec);
++	snd_hda_codec_write(codec, WIDGET_CHIP_CTRL, 0, 0x725, 0x81);
++
++	chipio_set_conn_rate_no_mutex(codec, 0x70, SR_96_000);
++	chipio_set_stream_channels(codec, 0x0c, 6);
++	chipio_set_stream_control(codec, 0x0c, 1);
++
++	ae9_post_dsp_stream_setup(codec, true);
++
++	ca0113_mmio_command_set(codec, 0x48, 0x0f, 0x00);
++	ca0113_mmio_command_set(codec, 0x49, 0x04, 0x37);
++	ca0113_mmio_command_set(codec, 0x48, 0x10, 0x00);
++	ca0113_mmio_command_set(codec, 0x48, 0x0a, 0x02);
++	ca0113_mmio_command_set(codec, 0x49, 0x05, 0x37);
++	ca0113_mmio_command_set(codec, 0x49, 0x18, 0xff);
++	ca0113_mmio_command_set(codec, 0x49, 0x19, 0xff);
++	ca0113_mmio_command_set(codec, 0x49, 0x02, 0x37);
++	ca0113_mmio_command_set(codec, 0x49, 0x1a, 0x00);
++	ca0113_mmio_command_set(codec, 0x49, 0x1b, 0x70);
++	ca0113_mmio_command_set(codec, 0x49, 0x03, 0x37);
++	ca0113_mmio_command_set(codec, 0x49, 0x00, 0xff);
++	ca0113_mmio_command_set(codec, 0x49, 0x01, 0xff);
++	ca0113_mmio_command_set(codec, 0x49, 0x06, 0xff);
++	ca0113_mmio_command_set(codec, 0x49, 0x07, 0xff);
++	ca0113_mmio_command_set(codec, 0x49, 0x10, 0x7f);
++	ca0113_mmio_command_set(codec, 0x49, 0x0a, 0x07);
++	ca0113_mmio_gpio_set(codec, 4, true);
++	ca0113_mmio_command_set_type2(codec, 0x48, 0x07, 0x80);
++	ca0113_mmio_command_set(codec, 0x49, 0x0a, 0x06);
++
++	ae9_post_dsp_stream_setup(codec, false);
++
++	ca0113_mmio_command_set_type2(codec, 0x48, 0x07, 0x00);
++	ca0113_mmio_command_set_type2(codec, 0x49, 0x0e, 0x01);
++	ca0113_mmio_command_set(codec, 0x48, 0x0f, 0x37);
++	ca0113_mmio_gpio_set(codec, 4, true);
++	ca0113_mmio_command_set(codec, 0x48, 0x10, 0x37);
++	mutex_unlock(&spec->chipio_mutex);
++}
++
+ /*
+  * Setup default parameters for DSP
+  */
+@@ -8530,6 +8655,75 @@ static void ae7_setup_defaults(struct hda_codec *codec)
+ 	ca0132_alt_init_speaker_tuning(codec);
+ }
+ 
++/*
++ * Setup default parameters for the Sound Blaster AE-9 DSP.
++ */
++static void ae9_setup_defaults(struct hda_codec *codec)
++{
++	struct ca0132_spec *spec = codec->spec;
++	unsigned int tmp;
++	int num_fx;
++	int idx, i;
++
++	if (spec->dsp_state != DSP_DOWNLOADED)
++		return;
++
++	ae9_post_dsp_mmio_commands(codec);
++	ca0132_alt_init_analog_mics(codec);
++	ca0132_alt_start_dsp_audio_streams(codec);
++
++	tmp = FLOAT_ZERO;
++	dspio_set_uint_param(codec, 0x96,
++			SPEAKER_TUNING_FRONT_LEFT_INVERT, tmp);
++	dspio_set_uint_param(codec, 0x96,
++			SPEAKER_TUNING_FRONT_RIGHT_INVERT, tmp);
++
++	/* New, unknown SCP req's */
++	dspio_set_uint_param(codec, 0x80, 0x0d, tmp);
++	dspio_set_uint_param(codec, 0x80, 0x0e, tmp);
++
++	ca0113_mmio_gpio_set(codec, 0, false);
++
++	/* Internal loopback off */
++	tmp = FLOAT_ONE;
++	dspio_set_uint_param(codec, 0x37, 0x08, tmp);
++	dspio_set_uint_param(codec, 0x37, 0x10, tmp);
++
++	/*remove DSP headroom*/
++	tmp = FLOAT_ZERO;
++	dspio_set_uint_param(codec, 0x96, 0x3C, tmp);
++
++	/* set WUH source */
++	tmp = FLOAT_TWO;
++	dspio_set_uint_param(codec, 0x31, 0x00, tmp);
++	chipio_set_conn_rate(codec, MEM_CONNID_WUH, SR_48_000);
++
++	/* Set speaker source? */
++	dspio_set_uint_param(codec, 0x32, 0x00, tmp);
++	ca0113_mmio_command_set(codec, 0x30, 0x28, 0x00);
++
++	ae9_post_dsp_asi_setup(codec);
++
++	/* out, in effects + voicefx */
++	num_fx = OUT_EFFECTS_COUNT + IN_EFFECTS_COUNT + 1;
++	for (idx = 0; idx < num_fx; idx++) {
++		for (i = 0; i <= ca0132_effects[idx].params; i++) {
++			dspio_set_uint_param(codec,
++					ca0132_effects[idx].mid,
++					ca0132_effects[idx].reqs[i],
++					ca0132_effects[idx].def_vals[i]);
++		}
++	}
++
++	ca0132_alt_init_speaker_tuning(codec);
++
++	ca0113_mmio_gpio_set(codec, 3, false);
++	ca0113_mmio_command_set(codec, 0x49, 0x04, 0x37);
++	ca0113_mmio_command_set(codec, 0x49, 0x05, 0x37);
++	ca0113_mmio_command_set(codec, 0x49, 0x02, 0x37);
++	ca0113_mmio_command_set(codec, 0x49, 0x03, 0x37);
++}
++
+ /*
+  * Initialization of flags in chip
+  */
+@@ -9671,6 +9865,9 @@ static int ca0132_init(struct hda_codec *codec)
+ 	case QUIRK_AE7:
+ 		ae7_setup_defaults(codec);
+ 		break;
++	case QUIRK_AE9:
++		ae9_setup_defaults(codec);
++		break;
+ 	default:
+ 		ca0132_setup_defaults(codec);
+ 		ca0132_init_analog_mic2(codec);
+-- 
+2.43.0
+

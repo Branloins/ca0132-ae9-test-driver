@@ -1,0 +1,54 @@
+From 065614bf208973639d90877c7e50c306ce6700eb Mon Sep 17 00:00:00 2001
+From: Connor McAdams <conmanx360@gmail.com>
+Date: Sun, 13 Mar 2022 15:48:15 -0400
+Subject: [PATCH 09/10] ALSA: hda/ca0132 - Add AE-9 custom controls.
+
+Add headphone gain controls, which use the same commands as the AE-5.
+Also, don't create an input selection enumerated control, because the
+AE-9 has no front microphone or line-in.
+
+Signed-off-by: Connor McAdams <conmanx360@gmail.com>
+---
+ sound/pci/hda/patch_ca0132.c | 10 ++++++----
+ 1 file changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/sound/pci/hda/patch_ca0132.c b/sound/pci/hda/patch_ca0132.c
+index 64b03e720561..44641caa0ce7 100644
+--- a/sound/pci/hda/patch_ca0132.c
++++ b/sound/pci/hda/patch_ca0132.c
+@@ -7232,7 +7232,7 @@ static int ca0132_build_controls(struct hda_codec *codec)
+ 		 * ZxR only has microphone input, there is no front panel
+ 		 * header on the card, and aux-in is handled by the DBPro board.
+ 		 */
+-		if (ca0132_quirk(spec) != QUIRK_ZXR) {
++		if (ca0132_quirk(spec) != QUIRK_ZXR && ca0132_quirk(spec) != QUIRK_AE9) {
+ 			err = ca0132_alt_add_input_enum(codec);
+ 			if (err < 0)
+ 				return err;
+@@ -7242,10 +7242,12 @@ static int ca0132_build_controls(struct hda_codec *codec)
+ 	switch (ca0132_quirk(spec)) {
+ 	case QUIRK_AE5:
+ 	case QUIRK_AE7:
+-		err = ae5_add_headphone_gain_enum(codec);
++		err = ae5_add_sound_filter_enum(codec);
+ 		if (err < 0)
+ 			return err;
+-		err = ae5_add_sound_filter_enum(codec);
++		break;
++	case QUIRK_AE9:
++		err = ae5_add_headphone_gain_enum(codec);
+ 		if (err < 0)
+ 			return err;
+ 		break;
+@@ -9118,7 +9120,7 @@ static void ca0132_init_chip(struct hda_codec *codec)
+ 	 * the daughter board. So, there is no input enum control, and we need
+ 	 * to make sure that spec->in_enum_val is set properly.
+ 	 */
+-	if (ca0132_quirk(spec) == QUIRK_ZXR)
++	if (ca0132_quirk(spec) == QUIRK_ZXR && ca0132_quirk(spec) == QUIRK_AE9)
+ 		spec->in_enum_val = REAR_MIC;
+ 
+ #ifdef ENABLE_TUNING_CONTROLS
+-- 
+2.43.0
+

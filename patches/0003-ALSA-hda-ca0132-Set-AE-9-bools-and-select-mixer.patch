@@ -1,0 +1,39 @@
+From bdc401cae35ec1485c58f5dd2747315d6d84b703 Mon Sep 17 00:00:00 2001
+From: Connor McAdams <conmanx360@gmail.com>
+Date: Fri, 4 Mar 2022 22:41:55 -0500
+Subject: [PATCH 03/10] ALSA: hda/ca0132 - Set AE-9 bools and select mixer.
+
+Set the boolean values used for desktop cards, and select the desktop
+mixer.
+
+Signed-off-by: Connor McAdams <conmanx360@gmail.com>
+---
+ sound/pci/hda/patch_ca0132.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/sound/pci/hda/patch_ca0132.c b/sound/pci/hda/patch_ca0132.c
+index 5b08807fab54..d1c66c14b1cb 100644
+--- a/sound/pci/hda/patch_ca0132.c
++++ b/sound/pci/hda/patch_ca0132.c
+@@ -10059,6 +10059,10 @@ static int patch_ca0132(struct hda_codec *codec)
+ 		spec->mixers[0] = desktop_mixer;
+ 		snd_hda_codec_set_name(codec, "Sound Blaster AE-7");
+ 		break;
++	case QUIRK_AE9:
++		spec->mixers[0] = desktop_mixer;
++		snd_hda_codec_set_name(codec, "Sound Blaster AE-9");
++		break;
+ 	default:
+ 		spec->mixers[0] = ca0132_mixer;
+ 		break;
+@@ -10070,6 +10074,7 @@ static int patch_ca0132(struct hda_codec *codec)
+ 	case QUIRK_R3D:
+ 	case QUIRK_AE5:
+ 	case QUIRK_AE7:
++	case QUIRK_AE9:
+ 	case QUIRK_ZXR:
+ 		spec->use_alt_controls = true;
+ 		spec->use_alt_functions = true;
+-- 
+2.43.0
+

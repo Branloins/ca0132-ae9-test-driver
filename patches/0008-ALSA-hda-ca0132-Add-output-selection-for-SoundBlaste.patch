@@ -1,0 +1,106 @@
+From 76cdff4751dc9e68c6a593eaffce080c0c495325 Mon Sep 17 00:00:00 2001
+From: Connor McAdams <conmanx360@gmail.com>
+Date: Sun, 13 Mar 2022 15:40:22 -0400
+Subject: [PATCH 08/10] ALSA: hda/ca0132 - Add output selection for
+ SoundBlaster AE-9.
+
+Add output selection quirk table information for SoundBlaster AE-9.
+
+Signed-off-by: Connor McAdams <conmanx360@gmail.com>
+---
+ sound/pci/hda/patch_ca0132.c | 54 ++++++++++++++++++++++++++++++++----
+ 1 file changed, 49 insertions(+), 5 deletions(-)
+
+diff --git a/sound/pci/hda/patch_ca0132.c b/sound/pci/hda/patch_ca0132.c
+index 454327df81ac..64b03e720561 100644
+--- a/sound/pci/hda/patch_ca0132.c
++++ b/sound/pci/hda/patch_ca0132.c
+@@ -752,6 +752,15 @@ static const struct ae_ca0113_output_set ae7_ca0113_output_presets = {
+ 		    { 0x3f, 0x3f, 0x00, 0x00, 0x02, 0x00 } },
+ };
+ 
++static const struct ae_ca0113_output_set ae9_ca0113_output_presets = {
++	.group  = { 0x48, 0x48, 0x48, 0x48 },
++	.target = { 0x1d, 0x0d, 0x17, 0x19 },
++		    /* Speakers. */
++	.vals   = { { 0x40, 0x00, 0x00, 0x00 },
++		    /* Headphones. */
++		    { 0x80, 0x40, 0x00, 0x00 } },
++};
++
+ /* ae5 ca0113 command sequences to set headphone gain levels. */
+ #define AE5_HEADPHONE_GAIN_PRESET_MAX_COMMANDS 4
+ struct ae5_headphone_gain_set {
+@@ -1519,6 +1528,29 @@ static const struct ca0132_alt_out_set_quirk_data quirk_out_set_data[] = {
+ 		  .chipio_write_addr = 0x0018b03c,
+ 		  .chipio_write_data = 0x00000010
+ 		} },
++	},
++	{ .quirk_id = QUIRK_AE9,
++	  .has_headphone_gain = true,
++	  .is_ae_series       = true,
++	  .out_set_info = {
++		/* Speakers. */
++		{ .dac2port          = 0xa4,
++		  .has_hda_gpio      = false,
++		  .mmio_gpio_count   = 1,
++		  .mmio_gpio_pin     = { 3 },
++		  .mmio_gpio_set     = { 1 },
++		  .scp_cmds_count    = 0,
++		  .has_chipio_write  = false,
++		},
++		/* Headphones. */
++		{ .dac2port          = 0xa1,
++		  .has_hda_gpio      = false,
++		  .mmio_gpio_count   = 1,
++		  .mmio_gpio_pin     = { 3 },
++		  .mmio_gpio_set     = { 0 },
++		  .scp_cmds_count    = 0,
++		  .has_chipio_write  = false,
++		} },
+ 	}
+ };
+ 
+@@ -4585,14 +4617,26 @@ static void ae5_mmio_select_out(struct hda_codec *codec)
+ {
+ 	struct ca0132_spec *spec = codec->spec;
+ 	const struct ae_ca0113_output_set *out_cmds;
+-	unsigned int i;
++	unsigned int i, cmd_cnt;
+ 
+-	if (ca0132_quirk(spec) == QUIRK_AE5)
++	switch (ca0132_quirk(spec)) {
++	case QUIRK_AE5:
++		cmd_cnt = AE_CA0113_OUT_SET_COMMANDS;
+ 		out_cmds = &ae5_ca0113_output_presets;
+-	else
++		break;
++	case QUIRK_AE7:
++		cmd_cnt = AE_CA0113_OUT_SET_COMMANDS;
+ 		out_cmds = &ae7_ca0113_output_presets;
++		break;
++	case QUIRK_AE9:
++		cmd_cnt = 4;
++		out_cmds = &ae9_ca0113_output_presets;
++		break;
++	default:
++		break;
++	}
+ 
+-	for (i = 0; i < AE_CA0113_OUT_SET_COMMANDS; i++)
++	for (i = 0; i < cmd_cnt; i++)
+ 		ca0113_mmio_command_set(codec, out_cmds->group[i],
+ 				out_cmds->target[i],
+ 				out_cmds->vals[spec->cur_out_type][i]);
+@@ -4633,7 +4677,7 @@ static int ca0132_alt_set_full_range_speaker(struct hda_codec *codec)
+ 	 * Only the AE series cards set this value when setting full-range,
+ 	 * and it's always 1.0f.
+ 	 */
+-	if (quirk == QUIRK_AE5 || quirk == QUIRK_AE7) {
++	if (ca0132_is_ae_card(codec)) {
+ 		err = dspio_set_uint_param(codec, 0x96,
+ 				SPEAKER_FULL_RANGE_SURROUND_L_R, FLOAT_ONE);
+ 		if (err < 0)
+-- 
+2.43.0
+

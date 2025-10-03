@@ -1,0 +1,51 @@
+From 9f2ae5fb83aa493bb25f3cbdd72aa860c242a4a8 Mon Sep 17 00:00:00 2001
+From: Connor McAdams <conmanx360@gmail.com>
+Date: Sun, 13 Mar 2022 16:00:12 -0400
+Subject: [PATCH 10/10] ALSA: hda/ca0132 - Add AE-9 exit commands.
+
+Add exit commands for the AE-9.
+
+Signed-off-by: Connor McAdams <conmanx360@gmail.com>
+---
+ sound/pci/hda/patch_ca0132.c | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/sound/pci/hda/patch_ca0132.c b/sound/pci/hda/patch_ca0132.c
+index 44641caa0ce7..5a2d75c9079d 100644
+--- a/sound/pci/hda/patch_ca0132.c
++++ b/sound/pci/hda/patch_ca0132.c
+@@ -9300,6 +9300,21 @@ static void ae7_exit_chip(struct hda_codec *codec)
+ 	snd_hda_codec_write(codec, 0x01, 0, 0x794, 0x53);
+ }
+ 
++static void ae9_exit_chip(struct hda_codec *codec)
++{
++	chipio_set_control_param(codec, CONTROL_PARAM_ASI, 0);
++
++	chipio_set_stream_control(codec, 0x18, 0);
++	chipio_set_stream_control(codec, 0x0c, 0);
++
++	snd_hda_codec_write(codec, 0x15, 0, 0x724, 0x83);
++	ca0113_mmio_command_set_type2(codec, 0x48, 0x07, 0x01);
++	ca0113_mmio_command_set(codec, 0x49, 0x0a, 0x07);
++
++	snd_hda_codec_write(codec, 0x01, 0, 0x793, 0x00);
++	snd_hda_codec_write(codec, 0x01, 0, 0x794, 0x53);
++}
++
+ static void zxr_exit_chip(struct hda_codec *codec)
+ {
+ 	chipio_set_stream_control(codec, 0x03, 0);
+@@ -10004,6 +10019,9 @@ static void ca0132_free(struct hda_codec *codec)
+ 	case QUIRK_AE7:
+ 		ae7_exit_chip(codec);
+ 		break;
++	case QUIRK_AE9:
++		ae9_exit_chip(codec);
++		break;
+ 	case QUIRK_R3DI:
+ 		r3di_gpio_shutdown(codec);
+ 		break;
+-- 
+2.43.0
+
