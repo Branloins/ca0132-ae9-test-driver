@@ -9550,6 +9550,130 @@ static void ca0132_mmio_init_ae5(struct hda_codec *codec)
 	const unsigned int *addr, *data;
 	unsigned int i, count;
 
+	/* === AE-9 SysEx init (BAR2 + 0xC00) derived from term-log.txt ===
+	 *
+	 * term-log.txt shows Creative's Windows driver writing a byte stream to
+	 * BAR2 offset 0xC00 that forms SysEx frames:
+	 *   0xF0 <cmd_id> <payload_len> <payload...> 0xF7
+	 *
+	 * This happens after the basic AE-5 style MMIO init table, but before the
+	 * HDA DSP download/bring-up. This function replays the *unique* frames
+	 * seen in the capture in first-seen order, with a small handshake loop.
+	 */
+	static inline void ae9_mmio_write_u8(struct ca0132_spec *s, u32 off, u8 v)
+	{
+		/* capture used DWORD writes; low byte is what matters */
+		writel((u32)v, s->mem_base + off);
+	}
+
+	static void ae9_mmio_sysex_send(struct hda_codec *c, u8 cmd,
+				       const u8 *payload, u8 len)
+	{
+		struct ca0132_spec *s = c->spec;
+		u32 off = 0xC00;
+		unsigned int j;
+
+		if (!s->mem_base)
+			return;
+
+		ae9_mmio_write_u8(s, off, 0xF0);
+		ae9_mmio_write_u8(s, off, cmd);
+		ae9_mmio_write_u8(s, off, len);
+		for (j = 0; j < len; j++)
+			ae9_mmio_write_u8(s, off, payload[j]);
+		ae9_mmio_write_u8(s, off, 0xF7);
+	}
+
+	static void ae9_mmio_sysex_init_from_termlog(struct hda_codec *c)
+	{
+		struct ca0132_spec *s = c->spec;
+		int k;
+
+		/* Only for AE-9 */
+		if (ca0132_quirk(s) != QUIRK_AE9 || !s->mem_base)
+			return;
+
+		/*
+		 * The capture shows 0xC00 being written with 0x30, then 0x0d,
+		 * followed by SysEx traffic. Re-emit that preface.
+		 */
+		ae9_mmio_write_u8(s, 0xC00, 0x30);
+		ae9_mmio_write_u8(s, 0xC00, 0x0d);
+
+		/* Handshake-ish loop (highly repeated in capture) */
+		{
+			static const u8 p_acm1[] = { 'A','c','m','1' };
+			static const u8 p_1mca[] = { '1','m','c','A' };
+			static const u8 p_d5[]   = { 0x00, 0x20, 0x04 };
+			static const u8 p_1111[] = { 0x11, 0x11, 0x11, 0x11 };
+
+			for (k = 0; k < 16; k++) {
+				ae9_mmio_sysex_send(c, 0x81, NULL, 0);
+				ae9_mmio_sysex_send(c, 0x54, p_acm1, sizeof(p_acm1));
+				ae9_mmio_sysex_send(c, 0x54, p_1mca, sizeof(p_1mca));
+				ae9_mmio_sysex_send(c, 0xD5, p_d5, sizeof(p_d5));
+				ae9_mmio_sysex_send(c, 0x54, p_1111, sizeof(p_1111));
+				usleep_range(1000, 2000);
+			}
+		}
+
+		/* Unique frames in first-seen order from term-log.txt */
+		{
+			static const u8 p_55[] = { 0x00,0x20,0x04,0xDE,0xC0,0xAD,0xDE };
+			static const u8 p_03a[] = { 0x05,0x03,0x03 };
+			static const u8 p_32a[] = { 0x02,0xB8,0x0B };
+			static const u8 p_43[]  = { 0x64,0x00,0xF4,0x01 };
+			static const u8 p_32b[] = { 0x01,0x88,0x13 };
+			static const u8 p_05[]  = { 0x02,0x01,0x00 };
+			static const u8 p_22a[] = { 0x01,0x00 };
+			static const u8 p_22b[] = { 0x02,0x01 };
+			static const u8 p_03b[] = { 0x02,0x00,0x40 };
+			static const u8 p_11_ae9[] = { 'A','E','-','9',0,0,0,0,0 };
+			static const u8 p_21[]  = { 0x02,0x00,0x00 };
+			static const u8 v_83_02[] = { 0x02 };
+			static const u8 v_83_07[] = { 0x07 };
+			static const u8 v_85_02[] = { 0x02 };
+			static const u8 v_b1_01[] = { 0x01 };
+			static const u8 v_b1_02[] = { 0x02 };
+			static const u8 v_b1_03[] = { 0x03 };
+			static const u8 p_03c[] = { 0x02,0x40,0x40 };
+			static const u8 p_11_hp[]  = { '-','H','P','-',0,0,0,0,0 };
+			static const u8 p_11_275[] = { '-','2','7','.','5',0,0,0,0 };
+			static const u8 p_22c[] = { 0x01,0x01 };
+			static const u8 p_11_sp[]  = { '-','S','P','-',0,0,0,0,0 };
+			static const u8 p_52[]  = { 0xCC,0xDD };
+
+			ae9_mmio_sysex_send(c, 0x55, p_55, sizeof(p_55));
+			ae9_mmio_sysex_send(c, 0x03, p_03a, sizeof(p_03a));
+			ae9_mmio_sysex_send(c, 0x32, p_32a, sizeof(p_32a));
+			ae9_mmio_sysex_send(c, 0x43, p_43, sizeof(p_43));
+			ae9_mmio_sysex_send(c, 0x32, p_32b, sizeof(p_32b));
+			ae9_mmio_sysex_send(c, 0x05, p_05, sizeof(p_05));
+			ae9_mmio_sysex_send(c, 0x22, p_22a, sizeof(p_22a));
+			ae9_mmio_sysex_send(c, 0x22, p_22b, sizeof(p_22b));
+			ae9_mmio_sysex_send(c, 0x03, p_03b, sizeof(p_03b));
+			ae9_mmio_sysex_send(c, 0x11, p_11_ae9, sizeof(p_11_ae9));
+			ae9_mmio_sysex_send(c, 0x21, p_21, sizeof(p_21));
+
+			/* State toggles */
+			ae9_mmio_sysex_send(c, 0x83, v_83_02, sizeof(v_83_02));
+			ae9_mmio_sysex_send(c, 0x83, v_83_07, sizeof(v_83_07));
+			ae9_mmio_sysex_send(c, 0xC2, NULL, 0);
+			ae9_mmio_sysex_send(c, 0x85, v_85_02, sizeof(v_85_02));
+			ae9_mmio_sysex_send(c, 0xB1, v_b1_01, sizeof(v_b1_01));
+			ae9_mmio_sysex_send(c, 0xB1, v_b1_02, sizeof(v_b1_02));
+			ae9_mmio_sysex_send(c, 0xB1, v_b1_03, sizeof(v_b1_03));
+
+			/* Optional later markers seen in capture */
+			ae9_mmio_sysex_send(c, 0x03, p_03c, sizeof(p_03c));
+			ae9_mmio_sysex_send(c, 0x11, p_11_hp, sizeof(p_11_hp));
+			ae9_mmio_sysex_send(c, 0x11, p_11_275, sizeof(p_11_275));
+			ae9_mmio_sysex_send(c, 0x22, p_22c, sizeof(p_22c));
+			ae9_mmio_sysex_send(c, 0x11, p_11_sp, sizeof(p_11_sp));
+			ae9_mmio_sysex_send(c, 0x52, p_52, sizeof(p_52));
+		}
+	}
+
 	addr = ca0113_mmio_init_address_ae5;
 	data = ca0113_mmio_init_data_ae5;
 	count = ARRAY_SIZE(ca0113_mmio_init_data_ae5);
@@ -9597,6 +9721,12 @@ static void ca0132_mmio_init_ae5(struct hda_codec *codec)
 	default:
 		break;
 	}
+
+	/*
+	 * AE-9 requires additional vendor init traffic observed as SysEx frames
+	 * over BAR2+0xC00. Run it here (pre-DSP), AE-9 only.
+	 */
+	ae9_mmio_sysex_init_from_termlog(codec);
 }
 
 static void ca0132_mmio_init(struct hda_codec *codec)
