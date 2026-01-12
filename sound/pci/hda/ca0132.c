@@ -1351,6 +1351,7 @@ static const struct hda_model_fixup ca0132_quirk_models[] = {
 	{ .id = QUIRK_R3D, .name = "r3d" },
 	{ .id = QUIRK_AE5, .name = "ae5" },
 	{ .id = QUIRK_AE7, .name = "ae7" },
+	{ .id = QUIRK_AE9, .name = "ae9" },
 	{}
 };
 
