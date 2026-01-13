@@ -9545,12 +9545,6 @@ static void ca0132_mmio_init_sbz(struct hda_codec *codec)
 		writel(data[i], spec->mem_base + addr[cur_addr + i]);
 }
 
-static void ca0132_mmio_init_ae5(struct hda_codec *codec)
-{
-	struct ca0132_spec *spec = codec->spec;
-	const unsigned int *addr, *data;
-	unsigned int i, count;
-
 	/* === AE-9 SysEx init (BAR2 + 0xC00) derived from term-log.txt ===
 	 *
 	 * term-log.txt shows Creative's Windows driver writing a byte stream to
@@ -9675,9 +9669,21 @@ static void ca0132_mmio_init_ae5(struct hda_codec *codec)
 		}
 	}
 
+
+static void ca0132_mmio_init_ae5(struct hda_codec *codec)
+{
+	struct ca0132_spec *spec = codec->spec;
+	const unsigned int *addr, *data;
+	unsigned int i, count;
+
 	addr = ca0113_mmio_init_address_ae5;
 	data = ca0113_mmio_init_data_ae5;
 	count = ARRAY_SIZE(ca0113_mmio_init_data_ae5);
+
+	if (ca0132_quirk(spec) == QUIRK_AE9)
+	{
+    	ae9_mmio_sysex_init_from_termlog(codec);
+	}
 
 	if (ca0132_quirk(spec) == QUIRK_AE7) {
 		writel(0x00000680, spec->mem_base + 0x1c);
